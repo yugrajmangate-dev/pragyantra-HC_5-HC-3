@@ -56,6 +56,33 @@ async function getGroundedAssistantResponse(question: string): Promise<GroundedA
   return (await response.json()) as GroundedAssistantSummary;
 }
 
+async function getAssistantChatResponse(question: string): Promise<GroundedAssistantSummary> {
+  const response = await fetch(`${API_BASE_URL}/assistant/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    // fallback to grounded summary when chat provider/config isn't available
+    return await getGroundedAssistantResponse(question);
+  }
+
+  const data = await response.json();
+  const grounded = (data.grounded_summary ?? (await getGroundedAssistantResponse(question))) as GroundedAssistantSummary;
+
+  return {
+    summary: data.answer ?? grounded.summary,
+    total_predictions_today: grounded.total_predictions_today,
+    average_risk_today: grounded.average_risk_today,
+    critical_alerts_week: grounded.critical_alerts_week,
+    warning_alerts_week: grounded.warning_alerts_week,
+    top_regions: grounded.top_regions,
+    question: grounded.question ?? question,
+  } as GroundedAssistantSummary;
+}
+
 export default function AIAssistant() {
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -124,7 +151,7 @@ export default function AIAssistant() {
     setIsThinking(true);
 
     try {
-      const [assistantPayload] = await Promise.all([getGroundedAssistantResponse(question), delay(2000)]);
+      const [assistantPayload] = await Promise.all([getAssistantChatResponse(question), delay(2000)]);
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",

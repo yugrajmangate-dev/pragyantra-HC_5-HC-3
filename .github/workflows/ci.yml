@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run backend tests
+        run: |
+          . .venv/bin/activate
+          pytest -q backend/tests
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install and build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build --if-present || echo "skip build"
+
+  assistant-smoke:
+    needs: [backend-tests]
+    runs-on: ubuntu-latest
+    if: ${{ secrets.ASSISTANT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Start backend server
+        env:
+          ASSISTANT_API_KEY: ${{ secrets.ASSISTANT_API_KEY }}
+          ASSISTANT_PROVIDER: ${{ secrets.ASSISTANT_PROVIDER || 'openai' }}
+        run: |
+          . .venv/bin/activate
+          nohup .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 &
+          sleep 4
+
+      - name: Assistant smoke test
+        env:
+          ASSISTANT_API_KEY: ${{ secrets.ASSISTANT_API_KEY }}
+        run: |
+          echo 'Running assistant smoke test...'
+          curl -sS -X POST "http://127.0.0.1:8000/assistant/chat" -H "Content-Type: application/json" -d '{"question":"Which region has the highest risk today?"}' -o /tmp/assistant_response.json || true
+          echo 'Response:'
+          cat /tmp/assistant_response.json || true

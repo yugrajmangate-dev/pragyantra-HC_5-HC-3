@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 from zoneinfo import ZoneInfoNotFoundError
+import httpx
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -44,6 +45,9 @@ HISTORY_MAX_PAGE_SIZE = max(1, int(os.getenv("HISTORY_MAX_PAGE_SIZE", "50")))
 CSV_FILENAME_PREFIX = os.getenv("CSV_FILENAME_PREFIX", "alerts-history")
 CSV_FILENAME_TIMEZONE = os.getenv("CSV_FILENAME_TIMEZONE", "UTC")
 CURRENT_SCHEMA_VERSION = 4
+ASSISTANT_PROVIDER = os.getenv("ASSISTANT_PROVIDER", "openai")
+ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY")
+ASSISTANT_OPENAI_MODEL = os.getenv("ASSISTANT_OPENAI_MODEL", "gpt-3.5-turbo")
 ALLOWED_STATUS_FILTERS = {"Safe", "Warning", "Critical Outbreak Risk"}
 ALLOWED_SORT_ORDERS = {"newest", "oldest"}
 
@@ -96,6 +100,10 @@ class HistoryRecord(BaseModel):
 class HistoryQueryParts(BaseModel):
     where_sql: str
     args: list[str]
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., min_length=1)
 
 
 def _column_exists(connection: sqlite3.Connection, table_name: str, column_name: str) -> bool:
@@ -1090,6 +1098,87 @@ def export_prediction_history_csv(
 @app.get("/assistant/grounded-summary")
 def grounded_assistant_summary(question: str | None = Query(default=None)) -> dict[str, str | int | float | list[str]]:
     return _build_grounded_assistant_summary(question)
+
+
+def _call_openai_chat(messages: list[dict], model: str | None = None) -> dict:
+    if not ASSISTANT_API_KEY:
+        raise HTTPException(status_code=403, detail="Assistant API key is not configured")
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {ASSISTANT_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": model or ASSISTANT_OPENAI_MODEL, "messages": messages, "temperature": 0.2}
+
+    try:
+        resp = httpx.post(url, headers=headers, json=payload, timeout=15.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Assistant provider request failed: {e}") from e
+
+
+def _call_anthropic_chat(messages: list[dict], model: str | None = None) -> dict:
+    if not ASSISTANT_API_KEY:
+        raise HTTPException(status_code=403, detail="Assistant API key is not configured")
+
+    # Build a single-prompt representation for Anthropic's completion API
+    system = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
+    user = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
+
+    prompt = f"{system}\n\nHuman: {user}\n\nAssistant:"
+
+    url = "https://api.anthropic.com/v1/complete"
+    headers = {"x-api-key": ASSISTANT_API_KEY, "Content-Type": "application/json"}
+    payload = {
+        "model": model or "claude-2.1",
+        "prompt": prompt,
+        "max_tokens_to_sample": 512,
+        "temperature": 0.2,
+    }
+
+    try:
+        resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Assistant provider request failed: {e}") from e
+
+
+@app.post("/assistant/chat")
+def assistant_chat(req: ChatRequest) -> dict:
+    question = req.question.strip() if req and req.question else None
+    if not question:
+        raise HTTPException(status_code=422, detail="question is required")
+
+    grounded = _build_grounded_assistant_summary(question)
+
+    system_content = (
+        f"You are an AI Field Assistant for outbreak surveillance. Use the following grounded summary of recent predictions to answer the user's question.\n\n{grounded['summary']}\n\n"
+        "If the question asks for current risk by region, include specific regions and risk scores where appropriate. Be concise and factual."
+    )
+
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": question},
+    ]
+
+    if ASSISTANT_PROVIDER.lower() == "openai":
+        resp_json = _call_openai_chat(messages)
+        try:
+            assistant_text = resp_json["choices"][0]["message"]["content"]
+        except Exception:
+            raise HTTPException(status_code=502, detail="Malformed response from assistant provider")
+        return {"answer": assistant_text, "grounded_summary": grounded}
+
+    if ASSISTANT_PROVIDER.lower() == "anthropic":
+        resp_json = _call_anthropic_chat(messages)
+        # Anthropic returns 'completion' as the text body
+        try:
+            assistant_text = resp_json.get("completion") or resp_json.get("completion_text") or ""
+        except Exception:
+            raise HTTPException(status_code=502, detail="Malformed response from assistant provider")
+        return {"answer": assistant_text, "grounded_summary": grounded}
+
+    raise HTTPException(status_code=501, detail=f"Assistant provider '{ASSISTANT_PROVIDER}' not supported")
 
 
 @app.post("/predict-outbreak")
