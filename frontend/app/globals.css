@@ -1,0 +1,64 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  --background: #020617;
+  --foreground: #e2e8f0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-display);
+  --font-mono: var(--font-plex-mono);
+}
+
+body {
+  background:
+    radial-gradient(1200px 520px at 10% -10%, rgba(14, 116, 144, 0.22), transparent 60%),
+    radial-gradient(1000px 460px at 90% 10%, rgba(244, 63, 94, 0.14), transparent 64%),
+    linear-gradient(180deg, #020617 0%, #020817 100%);
+  color: var(--foreground);
+  font-family: var(--font-display), "Segoe UI", sans-serif;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-slow {
+  0% {
+    transform: translateY(0px) translateX(0px);
+  }
+
+  50% {
+    transform: translateY(-14px) translateX(8px);
+  }
+
+  100% {
+    transform: translateY(0px) translateX(0px);
+  }
+}
+
+.animate-rise-in {
+  animation: rise-in 520ms ease-out both;
+}
+
+.animate-float-slow {
+  animation: float-slow 7.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in,
+  .animate-float-slow {
+    animation: none !important;
+  }
+}
