@@ -1,0 +1,5 @@
+Write-Host "Instructions to install GitHub CLI (gh) on Windows"
+Write-Host "1) If you have winget (Windows Package Manager): run as Administrator"
+Write-Host "   winget install --id GitHub.cli -e --source winget"
+Write-Host "2) Or download from: https://github.com/cli/cli#installation"
+Write-Host "3) After install: run 'gh auth login' to authenticate and then 'gh secret set' to add secrets."

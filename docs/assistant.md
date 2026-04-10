@@ -5,11 +5,11 @@ This project supports an LLM-backed `AI Field Assistant` that can be powered by 
 Do NOT commit your API keys. Use GitHub Secrets for CI and a local `.env` file for development.
 
 Local development
-- Create `backend/.env` (not committed) with the following:
+- Create `backend/.env` (do NOT commit) with the following values (use your real key only locally):
 
 ```
 ASSISTANT_PROVIDER=openai
-ASSISTANT_API_KEY=sk-...
+ASSISTANT_API_KEY=<YOUR_API_KEY>
 ASSISTANT_OPENAI_MODEL=gpt-3.5-turbo
 ```
 
@@ -17,10 +17,10 @@ Or for Anthropic/Claude:
 
 ```
 ASSISTANT_PROVIDER=anthropic
-ASSISTANT_API_KEY=ak-...
+ASSISTANT_API_KEY=<YOUR_API_KEY>
 ```
 
-Restart the backend after adding the key.
+- Restart the backend after adding the key. Do not paste your API key in chat or public places.
 
 CI / GitHub Actions
 - The included workflow `.github/workflows/ci.yml` will run an optional assistant smoke test when the repository secret `ASSISTANT_API_KEY` is configured.
@@ -28,10 +28,10 @@ CI / GitHub Actions
 - Alternatively, use the GitHub CLI:
 
 ```bash
-# install and authenticate gh first
-gh secret set ASSISTANT_API_KEY --body "sk-..."
+# install and authenticate gh first (optional)
+# gh secret set ASSISTANT_API_KEY --body "<YOUR_API_KEY>"
 # optionally set provider
-gh secret set ASSISTANT_PROVIDER --body "openai"
+# gh secret set ASSISTANT_PROVIDER --body "openai"
 ```
 
 Security

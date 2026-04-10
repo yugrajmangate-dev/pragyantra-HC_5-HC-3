@@ -16,6 +16,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from zoneinfo import ZoneInfoNotFoundError
 import httpx
+import socket
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -48,6 +49,7 @@ CURRENT_SCHEMA_VERSION = 4
 ASSISTANT_PROVIDER = os.getenv("ASSISTANT_PROVIDER", "openai")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY")
 ASSISTANT_OPENAI_MODEL = os.getenv("ASSISTANT_OPENAI_MODEL", "gpt-3.5-turbo")
+ASSISTANT_GROQ_MODEL = os.getenv("ASSISTANT_GROQ_MODEL", "groq2-mini")
 ALLOWED_STATUS_FILTERS = {"Safe", "Warning", "Critical Outbreak Risk"}
 ALLOWED_SORT_ORDERS = {"newest", "oldest"}
 
@@ -1112,6 +1114,15 @@ def _call_openai_chat(messages: list[dict], model: str | None = None) -> dict:
         resp = httpx.post(url, headers=headers, json=payload, timeout=15.0)
         resp.raise_for_status()
         return resp.json()
+    except (httpx.ConnectError, socket.gaierror) as e:
+        # Network / DNS errors are common when a machine is offline or behind a restrictive proxy/firewall.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Assistant provider request failed: network/DNS error while contacting OpenAI. "
+                "Check your network, proxy or firewall. On Windows try: `Test-NetConnection api.openai.com -Port 443`."
+            ),
+        ) from e
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Assistant provider request failed: {e}") from e
 
@@ -1139,6 +1150,48 @@ def _call_anthropic_chat(messages: list[dict], model: str | None = None) -> dict
         resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
         resp.raise_for_status()
         return resp.json()
+    except (httpx.ConnectError, socket.gaierror) as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Assistant provider request failed: network/DNS error while contacting Anthropic. "
+                "Check your network, proxy or firewall. On Windows try: `Test-NetConnection api.anthropic.com -Port 443`."
+            ),
+        ) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Assistant provider request failed: {e}") from e
+
+
+def _call_groq_chat(messages: list[dict], model: str | None = None) -> dict:
+    if not ASSISTANT_API_KEY:
+        raise HTTPException(status_code=403, detail="Assistant API key is not configured")
+
+    # Build a single-prompt representation for Groq's completions API
+    system = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
+    user = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
+
+    prompt = f"{system}\n\nHuman: {user}\n\nAssistant:"
+
+    url = os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.ai/v1/completions")
+    headers = {"Authorization": f"Bearer {ASSISTANT_API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "model": model or ASSISTANT_GROQ_MODEL,
+        "input": prompt,
+        "max_output_tokens": 512,
+    }
+
+    try:
+        resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
+        resp.raise_for_status()
+        return resp.json()
+    except (httpx.ConnectError, socket.gaierror) as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Assistant provider request failed: network/DNS error while contacting Groq. "
+                "Check your network, proxy or firewall. On Windows try: `Test-NetConnection api.groq.ai -Port 443`."
+            ),
+        ) from e
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Assistant provider request failed: {e}") from e
 
@@ -1167,6 +1220,34 @@ def assistant_chat(req: ChatRequest) -> dict:
             assistant_text = resp_json["choices"][0]["message"]["content"]
         except Exception:
             raise HTTPException(status_code=502, detail="Malformed response from assistant provider")
+        return {"answer": assistant_text, "grounded_summary": grounded}
+
+    if ASSISTANT_PROVIDER.lower() == "groq":
+        resp_json = _call_groq_chat(messages)
+        # Groq may return different shapes; attempt reasonable fallbacks
+        assistant_text = ""
+        try:
+            if isinstance(resp_json, dict):
+                if "completion" in resp_json:
+                    assistant_text = resp_json["completion"]
+                elif "output" in resp_json:
+                    out = resp_json["output"]
+                    if isinstance(out, list) and out:
+                        first = out[0]
+                        if isinstance(first, dict) and "text" in first:
+                            assistant_text = first["text"]
+                        elif isinstance(first, str):
+                            assistant_text = first
+                        else:
+                            assistant_text = json.dumps(out)
+                elif "choices" in resp_json:
+                    c = resp_json["choices"]
+                    if isinstance(c, list) and c:
+                        assistant_text = c[0].get("text") or c[0].get("message", {}).get("content", "")
+            if not assistant_text:
+                assistant_text = str(resp_json)
+        except Exception:
+            raise HTTPException(status_code=502, detail="Malformed response from Groq provider")
         return {"answer": assistant_text, "grounded_summary": grounded}
 
     if ASSISTANT_PROVIDER.lower() == "anthropic":
