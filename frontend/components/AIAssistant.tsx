@@ -91,11 +91,21 @@ export default function AIAssistant() {
     {
       id: "assistant-welcome",
       role: "assistant",
-      createdAt: formatNowTime(),
+      createdAt: "",
       content:
         "Ask a surveillance question and I will return a quick summary from the most recent outbreak predictions.",
     },
   ]);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      const copy = [...prev];
+      if (copy[0] && !copy[0].createdAt) {
+        copy[0].createdAt = formatNowTime();
+      }
+      return copy;
+    });
+  }, []);
 
   const canSend = useMemo(() => input.trim().length > 0 && !isThinking, [input, isThinking]);
 
