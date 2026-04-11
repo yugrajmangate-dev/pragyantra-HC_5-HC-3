@@ -13,6 +13,8 @@ type HistoryItem = {
   weather_autofilled: boolean;
   confidence_lower: number;
   confidence_upper: number;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type HistoryResponse = {
