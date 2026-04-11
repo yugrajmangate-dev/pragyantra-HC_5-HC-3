@@ -49,7 +49,7 @@ CURRENT_SCHEMA_VERSION = 4
 ASSISTANT_PROVIDER = os.getenv("ASSISTANT_PROVIDER", "groq")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY")
 ASSISTANT_OPENAI_MODEL = os.getenv("ASSISTANT_OPENAI_MODEL", "gpt-3.5-turbo")
-ASSISTANT_GROQ_MODEL = os.getenv("ASSISTANT_GROQ_MODEL", "groq2-mini")
+ASSISTANT_GROQ_MODEL = os.getenv("ASSISTANT_GROQ_MODEL", "llama3-8b-8192")
 ALLOWED_STATUS_FILTERS = {"Safe", "Warning", "Critical Outbreak Risk"}
 ALLOWED_SORT_ORDERS = {"newest", "oldest"}
 
@@ -1209,6 +1209,8 @@ def _call_groq_chat(messages: list[dict], model: str | None = None) -> dict:
     prompt = f"{system}\n\nHuman: {user}\n\nAssistant:"
 
     url = os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
+    if "api.groq.ai" in url or "v1/completions" in url:
+        url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {ASSISTANT_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": model or ASSISTANT_GROQ_MODEL,
