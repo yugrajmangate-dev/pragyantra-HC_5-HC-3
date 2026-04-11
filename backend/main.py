@@ -1118,7 +1118,7 @@ def assistant_debug() -> dict:
         host = "api.anthropic.com"
     elif provider == "groq":
         try:
-            host = urllib.parse.urlparse(os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.ai/v1/completions")).hostname
+            host = urllib.parse.urlparse(os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")).hostname
         except Exception:
             host = "api.groq.ai"
 
@@ -1208,7 +1208,7 @@ def _call_groq_chat(messages: list[dict], model: str | None = None) -> dict:
 
     prompt = f"{system}\n\nHuman: {user}\n\nAssistant:"
 
-    url = os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.ai/v1/completions")
+    url = os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
     headers = {"Authorization": f"Bearer {ASSISTANT_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": model or ASSISTANT_GROQ_MODEL,
