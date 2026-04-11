@@ -102,6 +102,8 @@ class HistoryRecord(BaseModel):
     weather_autofilled: bool
     confidence_lower: float
     confidence_upper: float
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class HistoryQueryParts(BaseModel):
@@ -854,7 +856,9 @@ def _load_prediction_history(
             temperature_c_used,
             weather_autofilled,
             confidence_lower,
-            confidence_upper
+            confidence_upper,
+            latitude,
+            longitude
         FROM prediction_results
         {query_parts.where_sql}
         ORDER BY id {order_sql}
@@ -876,6 +880,9 @@ def _load_prediction_history(
         confidence_lower_val = float(raw_lower) if raw_lower is not None else max(0.0, float(risk_score_val) - 10.0)
         confidence_upper_val = float(raw_upper) if raw_upper is not None else min(100.0, float(risk_score_val) + 10.0)
 
+        lat_val = float(row[10]) if row[10] is not None else None
+        lng_val = float(row[11]) if row[11] is not None else None
+
         history_records.append(
             HistoryRecord(
                 prediction_id=int(row[0]),
@@ -888,6 +895,8 @@ def _load_prediction_history(
                 weather_autofilled=bool(row[7]),
                 confidence_lower=confidence_lower_val,
                 confidence_upper=confidence_upper_val,
+                latitude=lat_val,
+                longitude=lng_val,
             )
         )
 
@@ -915,7 +924,9 @@ def _load_prediction_history_for_export(
             temperature_c_used,
             weather_autofilled,
             confidence_lower,
-            confidence_upper
+            confidence_upper,
+            latitude,
+            longitude
         FROM prediction_results
         {query_parts.where_sql}
         ORDER BY id {order_sql}
@@ -940,6 +951,8 @@ def _load_prediction_history_for_export(
             weather_autofilled=bool(row[7]),
             confidence_lower=(float(row[8]) if row[8] is not None else max(0.0, float(row[3]) - 10.0)),
             confidence_upper=(float(row[9]) if row[9] is not None else min(100.0, float(row[3]) + 10.0)),
+            latitude=(float(row[10]) if row[10] is not None else None),
+            longitude=(float(row[11]) if row[11] is not None else None),
         )
         for row in rows
     ]
