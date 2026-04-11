@@ -46,7 +46,7 @@ HISTORY_MAX_PAGE_SIZE = max(1, int(os.getenv("HISTORY_MAX_PAGE_SIZE", "50")))
 CSV_FILENAME_PREFIX = os.getenv("CSV_FILENAME_PREFIX", "alerts-history")
 CSV_FILENAME_TIMEZONE = os.getenv("CSV_FILENAME_TIMEZONE", "UTC")
 CURRENT_SCHEMA_VERSION = 4
-ASSISTANT_PROVIDER = os.getenv("ASSISTANT_PROVIDER", "openai")
+ASSISTANT_PROVIDER = os.getenv("ASSISTANT_PROVIDER", "groq")
 ASSISTANT_API_KEY = os.getenv("ASSISTANT_API_KEY")
 ASSISTANT_OPENAI_MODEL = os.getenv("ASSISTANT_OPENAI_MODEL", "gpt-3.5-turbo")
 ASSISTANT_GROQ_MODEL = os.getenv("ASSISTANT_GROQ_MODEL", "groq2-mini")
@@ -1100,6 +1100,42 @@ def export_prediction_history_csv(
 @app.get("/assistant/grounded-summary")
 def grounded_assistant_summary(question: str | None = Query(default=None)) -> dict[str, str | int | float | list[str]]:
     return _build_grounded_assistant_summary(question)
+
+
+@app.get("/assistant/debug")
+def assistant_debug() -> dict:
+    """Safe debug endpoint: reports whether an assistant API key is present and whether the
+    configured provider host resolves via DNS. This endpoint DOES NOT return the key value.
+    Use it locally to confirm the running process can see the configured environment.
+    """
+    provider = (ASSISTANT_PROVIDER or "").lower()
+    info: dict[str, object] = {"provider": provider, "has_key": bool(ASSISTANT_API_KEY)}
+
+    host: str | None = None
+    if provider == "openai":
+        host = "api.openai.com"
+    elif provider == "anthropic":
+        host = "api.anthropic.com"
+    elif provider == "groq":
+        try:
+            host = urllib.parse.urlparse(os.getenv("ASSISTANT_GROQ_URL", "https://api.groq.ai/v1/completions")).hostname
+        except Exception:
+            host = "api.groq.ai"
+
+    if host:
+        try:
+            resolved = socket.gethostbyname(host)
+            info["provider_host_resolves"] = True
+            info["provider_host"] = host
+            info["provider_host_ip"] = resolved
+        except Exception as e:
+            info["provider_host_resolves"] = False
+            info["provider_host"] = host
+            info["provider_host_error"] = str(e)
+    else:
+        info["provider_host_resolves"] = False
+
+    return info
 
 
 def _call_openai_chat(messages: list[dict], model: str | None = None) -> dict:
