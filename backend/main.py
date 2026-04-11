@@ -1334,6 +1334,11 @@ def predict_outbreak_risk(payload: OutbreakInput) -> dict[str, int | str | float
         except HTTPException:
             raise
         except Exception as error:
+            if "HTTP Error 429" in str(error):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Weather API limit reached. Please manually enter the rainfall and temperature values instead of leaving them empty."
+                )
             raise HTTPException(status_code=502, detail=f"Failed to fetch weather data: {error}") from error
 
         if rainfall_mm is None:
