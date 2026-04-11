@@ -1212,8 +1212,8 @@ def _call_groq_chat(messages: list[dict], model: str | None = None) -> dict:
     headers = {"Authorization": f"Bearer {ASSISTANT_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": model or ASSISTANT_GROQ_MODEL,
-        "input": prompt,
-        "max_output_tokens": 512,
+        "messages": messages,
+        "max_tokens": 512,
     }
 
     try:
@@ -1279,7 +1279,7 @@ def assistant_chat(req: ChatRequest) -> dict:
                 elif "choices" in resp_json:
                     c = resp_json["choices"]
                     if isinstance(c, list) and c:
-                        assistant_text = c[0].get("text") or c[0].get("message", {}).get("content", "")
+                        assistant_text = c[0].get("message", {}).get("content", "")
             if not assistant_text:
                 assistant_text = str(resp_json)
         except Exception:
